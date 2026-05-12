@@ -1,0 +1,11 @@
+# Claude Code name-clash backups
+*# Name clash*
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polar Generator - Live Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        header p { font-size: 1.1em; opacity: 0.9; }
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .control-panel select {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            flex: 1;
+            min-width: 200px;
+            background: white;
+        }
+        .control-panel button {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-start { background: #4CAF50; color: white; }
+        .btn-start:hover { background: #45a049; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .btn-stop { background: #f44336; color: white; }
+        .btn-stop:hover { background: #da190b; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .backup-btn {
+            display: flex; flex-direction: column; align-items: flex-start;
+            padding: 12px 20px; border: none; border-radius: 10px;
+            cursor: pointer; font-family: inherit; text-align: left;
+            transition: all 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            min-width: 190px;
+        }
+        .backup-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgba(0,0,0,0.2); }
+        .export-btn { background: linear-gradient(135deg, #1565C0, #1976D2); color: white; }
+        .import-btn { background: linear-gradient(135deg, #2E7D32, #388E3C); color: white; }
+        .predictwind-btn { background: linear-gradient(135deg, #00695C, #00897B); color: white; }
+        .backup-icon { font-size: 1.4em; margin-bottom: 2px; }
+        .backup-label { font-size: 0.95em; font-weight: 700; }
+        .backup-sub { font-size: 0.75em; opacity: 0.85; margin-top: 2px; }
+        .status-badge {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            background: #999;
+            color: white;
+        }
+        .status-active { background: #4CAF50; }
+        .nmea-block {
+            display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0;
+        }
+        .nmea-block .last-update { font-size: 0.85em; color: #666; white-space: nowrap; }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1200px) { .main-grid { grid-template-columns: 1fr; } }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            color: #1e3c72;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #2a5298;
+            padding-bottom: 10px;
+        }
+        .chart-container { position: relative; width: 100%; }
+        .chart-container canvas { display: block; }
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        .data-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        @media (max-width: 800px) { .data-grid-3 { grid-template-columns: repeat(2, 1fr); } }
+        .data-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #2a5298;
+        }
+        .data-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .data-value { font-size: 1.8em; font-weight: bold; color: #1e3c72; }
+        .data-unit { font-size: 0.7em; color: #999; margin-left: 5px; }
+        .performance-meter { margin-top: 20px; }
+        .meter-bar {
+            background: #e0e0e0;
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .meter-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f44336, #FFC107, #4CAF50);
+            width: 0%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: width 0.5s;
+        }
+        .vmg-table { width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 12px; }
+        .vmg-table th, .vmg-table td { padding: 8px 12px; text-align: center; border: 1px solid #ddd; }
+        .vmg-table thead tr:first-child th { background: #1e3c72; color: white; font-weight: 600; }
+        .vmg-table thead tr:last-child th { background: #2a5298; color: white; font-weight: 500; font-size: 0.88em; }
+        .vmg-table td.vmg-up   { background: #e3f2fd; color: #0d47a1; font-weight: 600; }
+        .vmg-table td.vmg-down { background: #f3e5f5; color: #4a148c; font-weight: 600; }
+        .vmg-table td.vmg-none { background: #f5f5f5; color: #bbb; }
+        .vmg-table tbody tr:hover td { filter: brightness(0.96); }
+        .polar-table { width: 100%; border-collapse: collapse; font-size: 0.85em; margin-top: 15px; }
+        .polar-table th, .polar-table td { padding: 6px 8px; text-align: center; border: 1px solid #ddd; }
+        .polar-table th { background: #1e3c72; color: white; font-weight: 600; }
+        .polar-table td.measured-p90 { background: #e8f5e9; font-weight: bold; color: #1b5e20; cursor: pointer; }
+        .polar-table td.measured-avg { background: #fff8e1; font-weight: bold; color: #e65100; cursor: pointer; }
+        .polar-table td.polar-ref { background: #f5f5f5; color: #888; }
+        .polar-table td.measured-p90:hover, .polar-table td.measured-avg:hover { filter: brightness(0.93); }
+        .measure-modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.55); z-index: 1000; overflow: auto;
+        }
+        .measure-modal-box {
+            background: white; margin: 5% auto; padding: 30px; border-radius: 12px;
+            max-width: 580px; max-height: 80vh; overflow: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        }
+        .measure-modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; border-bottom: 3px solid #2a5298; padding-bottom: 10px;
+        }
+        .measure-modal-header h2 { color: #1e3c72; font-size: 1.3em; }
+        .measure-modal-close {
+            background: none; border: none; font-size: 1.6em; cursor: pointer;
+            color: #666; line-height: 1; padding: 0 4px;
+        }
+        .measure-modal-close:hover { color: #333; }
+        .measure-table { width: 100%; border-collapse: collapse; font-size: 0.88em; margin-top: 8px; }
+        .measure-table th { background: #1e3c72; color: white; padding: 8px 10px; text-align: left; }
+        .measure-table th:last-child { text-align: right; }
+        .measure-table td { padding: 6px 10px; border-bottom: 1px solid #eee; }
+        .measure-table td:last-child { text-align: right; font-weight: bold; color: #1b5e20; }
+        .measure-table tr:nth-child(even) td { background: #f9f9f9; }
+        .modal-footer {
+            margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .btn-danger {
+            padding: 8px 16px; background: #c62828; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn-danger:hover { background: #b71c1c; }
+        .btn-danger:disabled { background: #e0e0e0; color: #aaa; cursor: not-allowed; }
+        .btn-secondary {
+            padding: 8px 16px; background: #1565C0; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn-secondary:hover { background: #0d47a1; }
+        .reset-step { font-size: 0.85em; color: #666; }
+        .card-header-row {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 3px solid #2a5298; padding-bottom: 10px; margin-bottom: 15px;
+        }
+        .card-header-row h2 { color: #1e3c72; font-size: 1.5em; border: none; margin: 0; padding: 0; }
+        .btn-reset-table {
+            padding: 6px 14px; background: #e53935; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 0.82em; font-weight: 600;
+            white-space: nowrap; transition: background 0.2s;
+        }
+        .btn-reset-table:hover { background: #b71c1c; }
+        .polar-legend { display: flex; gap: 20px; margin-top: 10px; font-size: 0.85em; color: #666; flex-wrap: wrap; }
+        .polar-legend span { display: flex; align-items: center; gap: 5px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+        .legend-p90 { background: #e8f5e9; border: 1px solid #4CAF50; }
+        .legend-avg { background: #fff8e1; border: 1px solid #FFA000; }
+        .legend-polar { background: #f5f5f5; border: 1px solid #ddd; }
+        .nmea-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .nmea-ok { background: #4CAF50; }
+        .nmea-err { background: #f44336; }
+        footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Polar Generator</h1>
+            <p>Live Sail Performance Monitor</p>
+        </header>
+
+        <div class="control-panel">
+            <select id="sailsInput">
+                <option value="Vol tuig met fok">Full sail with jib</option>
+                <option value="1ste rif">1st reef</option>
+                <option value="2de rif">2nd reef</option>
+                <option value="2de rif 60% fok">2nd reef 60% jib</option>
+                <option value="3de rif 60% fok">3rd reef 60% jib</option>
+                <option value="Vol tuig met genaker">Full sail with gennaker</option>
+                <option value="Vol tuig met parasailor">Full sail with parasailor</option>
+                <option value="Enkel fok">Jib only</option>
+                <option value="Enkel genaker">Gennaker only</option>
+                <option value="Enkel Parasailor">Parasailor only</option>
+            </select>
+            <button class="btn-start" onclick="startSession()">Start Sail</button>
+            <button class="btn-stop" onclick="stopSession()">Stop Sail</button>
+            <span class="status-badge" id="statusBadge">Inactive</span>
+            <span id="sessionTimer" style="display:none; font-size:1.05em; font-weight:700; color:#1e3c72; letter-spacing:0.05em;">0m 00s</span>
+            <span class="nmea-block">
+                <span id="nmeaStatus"><span class="nmea-status nmea-err"></span>NMEA</span>
+                <span class="last-update" id="lastUpdate">--:--:--</span>
+            </span>
+        </div>
+
+        <div class="main-grid">
+            <div class="card">
+                <h2>Performance</h2>
+                <div class="data-grid-3">
+                    <div class="data-item" style="border-left-color: #4CAF50;">
+                        <div class="data-label">Performance</div>
+                        <div class="data-value"><span id="perfPct">--</span><span class="data-unit">%</span></div>
+                    </div>
+                    <div class="data-item" style="border-left-color: #FF9800;">
+                        <div class="data-label">VMG</div>
+                        <div class="data-value"><span id="vmg">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item" style="border-left-color: #2196F3;">
+                        <div class="data-label">Reference speed (measured polar)</div>
+                        <div class="data-value"><span id="polarStw">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Best VMG Upwind</div>
+                        <div class="data-value"><span id="vmgUp">--</span><span class="data-unit">kn @ <span id="twaUp">--</span>°</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Best VMG Downwind</div>
+                        <div class="data-value"><span id="vmgDown">--</span><span class="data-unit">kn @ <span id="twaDown">--</span>°</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Sail Configuration</div>
+                        <div class="data-value" style="font-size: 0.95em;" id="sessionSails">-</div>
+                    </div>
+                </div>
+
+                <div class="performance-meter">
+                    <div class="data-label">Performance vs Polar</div>
+                    <div class="meter-bar">
+                        <div class="meter-fill" id="performanceMeter" style="width: 0%">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Live Performance</h2>
+                <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+                    <div id="motorWarning" style="display:none; background:#FF6B00; color:#fff; font-weight:bold; padding:8px 12px; border-radius:6px; flex:1; text-align:center;">
+                        ⚠️ Engine detected — no polar data recorded
+                    </div>
+                    <div id="motorOverrideWarning" style="display:none; background:#795548; color:#fff; font-weight:bold; padding:8px 12px; border-radius:6px; flex:1; text-align:center;">
+                        ⚙️ Engine detection disabled — recording all data
+                    </div>
+                    <button id="motorToggleBtn" onclick="toggleMotorDetection()"
+                        style="padding:8px 14px; border:none; border-radius:6px; cursor:pointer;
+                               font-size:0.85em; font-weight:600; white-space:nowrap;
+                               background:#4CAF50; color:white; transition:background 0.2s;">
+                        🔍 Detection: ON
+                    </button>
+                </div>
+                <div class="data-grid">
+                    <div class="data-item">
+                        <div class="data-label">Wind Angle (TWA)</div>
+                        <div class="data-value"><span id="twa">--</span><span class="data-unit">°</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Wind Speed (TWS)</div>
+                        <div class="data-value"><span id="tws">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Boat Speed (STW)</div>
+                        <div class="data-value"><span id="stw">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Speed Over Ground</div>
+                        <div class="data-value"><span id="sog">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Avg. Speed (session)</div>
+                        <div class="data-value"><span id="avgSpeed">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-label">Max Speed (session)</div>
+                        <div class="data-value"><span id="maxSpeed">--</span><span class="data-unit">kn</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header-row">
+                <h2>Polar Table — <span id="tableSailLabel">Full sail with jib</span></h2>
+                <button class="btn-reset-table" onclick="openResetModal()">↺ Reset table</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="polar-table" id="polarTableEl">
+                    <thead><tr><th>TWA \ TWS</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="polar-legend">
+                <span><span class="legend-dot legend-p90"></span> Measured — 90th percentile</span>
+                <span><span class="legend-dot legend-avg"></span> Measured — average (old)</span>
+                <span><span class="legend-dot legend-polar"></span> Preloaded polar</span>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <h2>VMG Targets — <span id="vmgSailLabel">Full sail with jib</span></h2>
+            <div style="overflow-x: auto;">
+                <table class="vmg-table" id="vmgTableEl">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">TWS</th>
+                            <th colspan="2">⬆ Upwind</th>
+                            <th colspan="2">⬇ Downwind</th>
+                        </tr>
+                        <tr>
+                            <th>Angle (TWA)</th>
+                            <th>Speed (kn)</th>
+                            <th>Angle (TWA)</th>
+                            <th>Speed (kn)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vmgTableBody">
+                        <tr><td colspan="5" style="color:#aaa; padding:16px;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p style="font-size:0.8em; color:#888; margin-top:8px;">Optimal VMG angle and boat speed based on measured polar. Shows — when no measured data is available for this sail configuration.</p>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <h2>Polar Diagram — <span id="polarSailLabel">Full sail with jib</span></h2>
+            <div class="chart-container">
+                <canvas id="polarChart"></canvas>
+            </div>
+            <div class="polar-legend">
+                <span><span class="legend-dot legend-p90"></span> Measured — 90th percentile</span>
+                <span><span class="legend-dot legend-avg"></span> Measured — average (old)</span>
+                <span><span class="legend-dot legend-polar"></span> Preloaded polar (Nautitech 40 VPP)</span>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <h2>💾 Backup &amp; Restore</h2>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+                <a href="/api/export" download style="text-decoration:none;">
+                    <button class="backup-btn export-btn">
+                        <span class="backup-icon">⬇</span>
+                        <span class="backup-label">Export backup</span>
+                        <span class="backup-sub">Download all session data</span>
+                    </button>
+                </a>
+                <div>
+                    <input type="file" id="importFile" accept=".json" style="display:none;">
+                    <button class="backup-btn import-btn" onclick="document.getElementById('importFile').click()">
+                        <span class="backup-icon">⬆</span>
+                        <span class="backup-label">Import backup</span>
+                        <span class="backup-sub">Restore from file</span>
+                    </button>
+                </div>
+                <button class="backup-btn predictwind-btn" onclick="exportPredictwind()">
+                    <span class="backup-icon">📡</span>
+                    <span class="backup-label">Export to Predictwind</span>
+                    <span class="backup-sub">Download polar as .txt</span>
+                </button>
+                <span id="importStatus" style="font-size:0.9em; font-weight:500;"></span>
+            </div>
+        </div>
+
+        <!-- Modal: individual measurements per cell -->
+        <div class="measure-modal-overlay" id="measureModal">
+            <div class="measure-modal-box">
+                <div class="measure-modal-header">
+                    <h2 id="modalTitle">Measurements</h2>
+                    <button class="measure-modal-close" onclick="closeMeasureModal()">✕</button>
+                </div>
+                <div id="modalContent">Loading...</div>
+                <div class="modal-footer" id="modalFooter" style="display:none;">
+                    <button class="btn-danger" onclick="clearCurrentCell()">🗑 Clear this cell</button>
+                    <span class="reset-step">Removes all stored measurements for this cell from all sessions</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: reset table -->
+        <div class="measure-modal-overlay" id="resetModal">
+            <div class="measure-modal-box">
+                <div class="measure-modal-header">
+                    <h2>Reset table</h2>
+                    <button class="measure-modal-close" onclick="closeResetModal()">✕</button>
+                </div>
+                <p style="margin-bottom:10px;">All measured values for <strong id="resetSailName"></strong> will be deleted. The preloaded polar remains visible.</p>
+                <p style="color:#c62828; font-size:0.9em;">⚠️ This cannot be undone. Download a backup first.</p>
+                <div class="modal-footer" style="flex-direction:column; align-items:flex-start; gap:10px;">
+                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        <button class="btn-secondary" id="resetBackupBtn" onclick="downloadBackupForReset()">⬇ Step 1: Download backup</button>
+                        <button class="btn-danger" id="resetConfirmBtn" disabled onclick="executeReset()">Step 2: Delete all values</button>
+                    </div>
+                    <span class="reset-step" id="resetStatusMsg">Download the backup to continue.</span>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Polar Generator | Real-time Monitor</p>
+        </footer>
+    </div>
+
+    <script>
+        let nmeaAlive = false;
+        let lastTimestamp = '';
+        let currentSail = 'Vol tuig met fok';
+        let polarTableData = null;
+        let lastPolarFetchSail = '';
+        let liveTwa = 0, liveStw = 0;
+        let currentModalCell = null;  // {twa, tws, sail} of the open modal
+        let lastPolarRefresh = 0;     // timestamp of last polar table fetch
+        const POLAR_REFRESH_INTERVAL = 60000; // refresh polar table every 60s during active session
+
+        const windColors = {
+            4:  '#90CAF9', 6:  '#42A5F5', 8:  '#1E88E5',
+            10: '#1565C0', 12: '#4CAF50', 16: '#FF9800',
+            20: '#F44336', 25: '#9C27B0', 30: '#795548',
+        };
+
+        // Half-circle polar: TWA 0° = top, 180° = bottom, only right side
+        function polarToCanvas(twa, speed, cx, cy, scale) {
+            const rad = twa * Math.PI / 180;
+            const r = speed * scale;
+            return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
+        }
+
+        let polarCanvasSize = null;
+
+        function drawPolarDiagram() {
+            const canvas = document.getElementById('polarChart');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const container = canvas.parentElement;
+
+            if (!polarCanvasSize) {
+                canvas.style.display = 'none';
+                const rect = container.getBoundingClientRect();
+                canvas.style.display = '';
+                polarCanvasSize = { w: rect.width, h: rect.width * 0.65 };
+                canvas.width = polarCanvasSize.w * dpr;
+                canvas.height = polarCanvasSize.h * dpr;
+                canvas.style.width = polarCanvasSize.w + 'px';
+                canvas.style.height = polarCanvasSize.h + 'px';
+            }
+            const w = polarCanvasSize.w;
+            const h = polarCanvasSize.h;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const maxSpeed = 16;
+            const margin = 50;
+            const maxRadius = (h - margin * 2) / 2;
+            const scale = maxRadius / maxSpeed;
+            const cx = margin;
+            const cy = h / 2;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.save();
+
+            // Speed rings
+            ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+            ctx.lineWidth = 1;
+            for (let spd = 2; spd <= maxSpeed; spd += 2) {
+                const r = spd * scale;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(spd + ' kn', cx + r + 4, cy);
+            }
+
+            // Angle lines
+            const gridAngles = [0, 30, 45, 60, 90, 120, 135, 150, 180];
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = 1;
+            gridAngles.forEach(twa => {
+                const end = polarToCanvas(twa, maxSpeed, cx, cy, scale);
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(end.x, end.y);
+                ctx.stroke();
+                const labelR = maxSpeed * 1.07;
+                const lp = polarToCanvas(twa, labelR, cx, cy, scale);
+                ctx.fillStyle = '#1e3c72';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = twa < 90 ? 'left' : twa === 90 ? 'center' : 'left';
+                ctx.textBaseline = twa === 0 ? 'bottom' : twa === 180 ? 'top' : 'middle';
+                ctx.fillText(twa + '°', lp.x, lp.y);
+            });
+
+            // Vertical axis
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - maxSpeed * scale);
+            ctx.lineTo(cx, cy + maxSpeed * scale);
+            ctx.stroke();
+
+            // Wind arrow label
+            ctx.fillStyle = '#1e3c72';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('↓ WIND', cx + 20, cy - maxSpeed * scale - 12);
+
+            if (!polarTableData) { ctx.restore(); return; }
+
+            const winds = polarTableData.winds;
+            const angles = polarTableData.angles;
+            const table = polarTableData.table;
+
+            winds.forEach(tws => {
+                const color = windColors[tws] || '#999';
+                const points = [];
+                angles.forEach(twa => {
+                    const cell = table[String(twa)] && table[String(twa)][String(tws)];
+                    if (cell) points.push({ twa, speed: cell.speed, source: cell.source });
+                });
+                if (points.length < 2) return;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 4]);
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                points.forEach((p, i) => {
+                    const pt = polarToCanvas(p.twa, p.speed, cx, cy, scale);
+                    i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y);
+                });
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 1.0;
+
+                points.forEach(p => {
+                    if (p.source !== 'measured') return;
+                    const pt = polarToCanvas(p.twa, p.speed, cx, cy, scale);
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                });
+
+                const lastPt = points[points.length - 1];
+                if (lastPt) {
+                    const lp = polarToCanvas(lastPt.twa, lastPt.speed, cx, cy, scale);
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(tws + 'kn', lp.x + 6, lp.y);
+                }
+            });
+
+            // Live position dot
+            if (liveStw > 0 && liveTwa > 0) {
+                const pt = polarToCanvas(liveTwa, liveStw, cx, cy, scale);
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(244, 67, 54, 0.2)';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#f44336';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        window.addEventListener('resize', () => { polarCanvasSize = null; if (polarTableData) drawPolarDiagram(); });
+
+        function renderPolarTable(tableData) {
+            if (!tableData) return;
+            const el = document.getElementById('polarTableEl');
+            const winds = tableData.winds;
+            const angles = tableData.angles;
+            const table = tableData.table;
+
+            let html = '<thead><tr><th>TWA \\ TWS</th>';
+            winds.forEach(w => { html += '<th>' + w + ' kn</th>'; });
+            html += '</tr></thead><tbody>';
+
+            angles.forEach(twa => {
+                html += '<tr><th>' + twa + '°</th>';
+                winds.forEach(tws => {
+                    const cell = table[String(twa)] && table[String(twa)][String(tws)];
+                    if (!cell) {
+                        html += '<td class="polar-ref">--</td>';
+                        return;
+                    }
+                    if (cell.source === 'measured') {
+                        const cls = cell.method === 'p90' ? 'measured-p90' : 'measured-avg';
+                        const label = cell.method === 'p90' ? 'p90' : 'avg';
+                        html += '<td class="' + cls + '" title="Click for measurements — ' + cell.count + ' samples (' + label + ')" ' +
+                                'data-twa="' + twa + '" data-tws="' + tws + '" onclick="showMeasurements(this)">' +
+                                cell.speed.toFixed(2) + '</td>';
+                    } else {
+                        html += '<td class="polar-ref">' + cell.speed.toFixed(2) + '</td>';
+                    }
+                });
+                html += '</tr>';
+            });
+            html += '</tbody>';
+            el.innerHTML = html;
+        }
+
+        function renderVmgTable(rows) {
+            const body = document.getElementById('vmgTableBody');
+            if (!rows || rows.length === 0) {
+                body.innerHTML = '<tr><td colspan="5" style="color:#aaa; padding:16px;">No data available</td></tr>';
+                return;
+            }
+            let html = '';
+            rows.forEach(function(row) {
+                const upTwa   = row.upwind_twa   !== null ? row.upwind_twa + '°'          : '—';
+                const upSpd   = row.upwind_speed  !== null ? row.upwind_speed.toFixed(2)   : '—';
+                const dnTwa   = row.downwind_twa  !== null ? row.downwind_twa + '°'        : '—';
+                const dnSpd   = row.downwind_speed !== null ? row.downwind_speed.toFixed(2) : '—';
+                html += '<tr>';
+                html += '<td><strong>' + row.tws + ' kn</strong></td>';
+                html += '<td class="' + (row.upwind_twa   !== null ? 'vmg-up'   : 'vmg-none') + '">' + upTwa + '</td>';
+                html += '<td class="' + (row.upwind_speed  !== null ? 'vmg-up'   : 'vmg-none') + '">' + upSpd + '</td>';
+                html += '<td class="' + (row.downwind_twa  !== null ? 'vmg-down' : 'vmg-none') + '">' + dnTwa + '</td>';
+                html += '<td class="' + (row.downwind_speed !== null ? 'vmg-down' : 'vmg-none') + '">' + dnSpd + '</td>';
+                html += '</tr>';
+            });
+            body.innerHTML = html;
+        }
+
+        async function fetchVmgTable(sail) {
+            try {
+                const resp = await fetch('/api/vmg-table?sail=' + encodeURIComponent(sail));
+                const data = await resp.json();
+                document.getElementById('vmgSailLabel').textContent = document.getElementById('sailsInput').selectedOptions[0].text;
+                renderVmgTable(data.rows);
+            } catch (e) {
+                console.error('VMG table fetch error:', e);
+            }
+        }
+
+        async function fetchPolarTable(sail) {
+            try {
+                const resp = await fetch('/api/polar-table?sail=' + encodeURIComponent(sail));
+                polarTableData = await resp.json();
+                const displayName = document.getElementById('sailsInput').selectedOptions[0].text;
+                document.getElementById('polarSailLabel').textContent = displayName;
+                document.getElementById('tableSailLabel').textContent = displayName;
+                drawPolarDiagram();
+                renderPolarTable(polarTableData);
+                fetchVmgTable(sail);
+            } catch (e) {
+                console.error('Polar table fetch error:', e);
+            }
+        }
+
+        async function updateData() {
+            try {
+                const response = await fetch('/api/current');
+                const data = await response.json();
+                const c = data.current;
+
+                // NMEA status
+                if (c.timestamp !== lastTimestamp) {
+                    lastTimestamp = c.timestamp;
+                    nmeaAlive = true;
+                } else {
+                    nmeaAlive = false;
+                }
+                const nmeaDot = document.querySelector('#nmeaStatus .nmea-status');
+                nmeaDot.className = 'nmea-status ' + (nmeaAlive ? 'nmea-ok' : 'nmea-err');
+
+                // Engine detection state + warning
+                motorDetectionEnabled = data.motor_detection_enabled !== false;
+                updateMotorUI(motorDetectionEnabled, c.motoring);
+
+                // Live values
+                document.getElementById('twa').textContent = c.twa.toFixed(1);
+                document.getElementById('tws').textContent = c.tws.toFixed(1);
+                document.getElementById('stw').textContent = c.stw.toFixed(2);
+                document.getElementById('sog').textContent = c.sog.toFixed(2);
+
+                // Session — track sail changes for polar table refresh
+                if (data.active) {
+                    document.getElementById('statusBadge').textContent = 'Active';
+                    document.getElementById('statusBadge').className = 'status-badge status-active';
+                    document.getElementById('sessionSails').textContent = data.session.sails;
+                    currentSail = data.session.sails;
+                } else {
+                    document.getElementById('statusBadge').textContent = 'Inactive';
+                    document.getElementById('statusBadge').className = 'status-badge';
+                    document.getElementById('sessionSails').textContent = document.getElementById('sailsInput').selectedOptions[0].text;
+                    currentSail = document.getElementById('sailsInput').value;
+                }
+
+                // Session timer
+                const timerEl = document.getElementById('sessionTimer');
+                if (data.active && data.session.start_time) {
+                    const elapsed = Math.floor((Date.now() - new Date(data.session.start_time)) / 1000);
+                    const h = Math.floor(elapsed / 3600);
+                    const m = Math.floor((elapsed % 3600) / 60);
+                    const s = elapsed % 60;
+                    timerEl.textContent = (h > 0 ? h + 'h ' : '') + m + 'm ' + String(s).padStart(2, '0') + 's';
+                    timerEl.style.display = '';
+                } else {
+                    timerEl.style.display = 'none';
+                }
+
+                // Refresh polar + VMG tables when sail changes, or every 60s during active session
+                const now = Date.now();
+                const sailChanged = currentSail !== lastPolarFetchSail;
+                const periodicRefresh = data.active && (now - lastPolarRefresh > POLAR_REFRESH_INTERVAL);
+                if (sailChanged || periodicRefresh) {
+                    lastPolarFetchSail = currentSail;
+                    lastPolarRefresh = now;
+                    fetchPolarTable(currentSail);
+                }
+
+                // Session stats
+                if (data.active) {
+                    document.getElementById('avgSpeed').textContent = (data.session.stw_avg || 0).toFixed(2);
+                    document.getElementById('maxSpeed').textContent = (data.session.stw_max || 0).toFixed(2);
+                } else {
+                    document.getElementById('avgSpeed').textContent = '--';
+                    document.getElementById('maxSpeed').textContent = '--';
+                }
+
+                // Live dot on polar diagram
+                liveTwa = c.twa;
+                liveStw = c.stw;
+                if (polarTableData) drawPolarDiagram();
+
+                // Performance data
+                const p = data.performance || {};
+                const fmt = (v, dec) => v !== null && v !== undefined ? Number(v).toFixed(dec) : '--';
+                document.getElementById('vmg').textContent = fmt(p.vmg, 2);
+                document.getElementById('polarStw').textContent = fmt(p.polar_stw, 2);
+                document.getElementById('perfPct').textContent = fmt(p.performance_pct, 1);
+                document.getElementById('vmgUp').textContent = fmt(p.max_vmg_upwind, 2);
+                document.getElementById('twaUp').textContent = p.target_twa_upwind !== null && p.target_twa_upwind !== undefined ? p.target_twa_upwind : '--';
+                document.getElementById('vmgDown').textContent = fmt(p.max_vmg_downwind, 2);
+                document.getElementById('twaDown').textContent = p.target_twa_downwind !== null && p.target_twa_downwind !== undefined ? p.target_twa_downwind : '--';
+
+                // Performance meter
+                const meter = document.getElementById('performanceMeter');
+                const perf = p.performance_pct;
+                if (perf !== null && perf !== undefined) {
+                    const meterPct = Math.min(perf / 1.5 * 100, 100);
+                    meter.style.width = meterPct + '%';
+                    meter.textContent = Number(perf).toFixed(0) + '%';
+                    meter.style.background = perf >= 100
+                        ? 'linear-gradient(90deg, #4CAF50, #2196F3)'
+                        : 'linear-gradient(90deg, #f44336, #FFC107, #4CAF50)';
+                } else {
+                    meter.style.width = '100%';
+                    meter.textContent = 'No measured data';
+                    meter.style.background = '#bdbdbd';
+                }
+
+                // Last update timestamp (next to NMEA)
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-GB');
+
+            } catch (error) {
+                console.error('Update error:', error);
+                const nmeaDot = document.querySelector('#nmeaStatus .nmea-status');
+                nmeaDot.className = 'nmea-status nmea-err';
+            }
+        }
+
+        async function startSession() {
+            const sails = document.getElementById('sailsInput').value;
+            if (!sails.trim()) { alert('Please enter a sail configuration!'); return; }
+            try {
+                await fetch('/api/session/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sails: sails })
+                });
+                lastPolarFetchSail = '';
+                updateData();
+            } catch (e) { console.error('Start error:', e); }
+        }
+
+        async function stopSession() {
+            try {
+                await fetch('/api/session/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                lastPolarFetchSail = '';  // force immediate polar table refresh
+                lastPolarRefresh = 0;
+                updateData();
+            } catch (e) { console.error('Stop error:', e); }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('sailsInput').addEventListener('change', () => {
+                lastPolarFetchSail = '';
+            });
+        });
+
+        // Import handler
+        document.getElementById('importFile').addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
+            const status = document.getElementById('importStatus');
+            status.textContent = 'Importing...';
+            status.style.color = '#666';
+            try {
+                const formData = new FormData();
+                formData.append('backup', file);
+                const resp = await fetch('/api/import', { method: 'POST', body: formData });
+                const result = await resp.json();
+                if (result.status === 'ok') {
+                    status.textContent = '✓ ' + result.imported + ' sessions restored';
+                    status.style.color = '#2E7D32';
+                    lastPolarFetchSail = '';
+                } else {
+                    status.textContent = '✗ Error: ' + result.message;
+                    status.style.color = '#c62828';
+                }
+            } catch (e) {
+                status.textContent = '✗ Upload failed';
+                status.style.color = '#c62828';
+            }
+            this.value = '';
+        });
+
+        async function showMeasurements(cell) {
+            const twa = cell.dataset.twa;
+            const tws = cell.dataset.tws;
+            const sail = currentSail;
+            currentModalCell = { twa, tws, sail };
+            document.getElementById('modalTitle').textContent = 'Measurements — TWA ' + twa + '° / TWS ' + tws + ' kn';
+            document.getElementById('modalContent').innerHTML = '<p style="color:#666;">Loading...</p>';
+            document.getElementById('modalFooter').style.display = 'none';
+            document.getElementById('measureModal').style.display = 'block';
+            try {
+                const resp = await fetch('/api/measurements?sail=' + encodeURIComponent(sail) + '&twa=' + twa + '&tws=' + tws);
+                const data = await resp.json();
+                if (!data.samples || data.samples.length === 0) {
+                    document.getElementById('modalContent').innerHTML =
+                        '<p style="color:#888; margin-top:10px;">No measurements found for this cell.</p>';
+                    return;
+                }
+                const totalUnknown = data.samples.filter(s => s.timestamp === null).length;
+                let subLine = data.samples.length + ' entr' + (data.samples.length === 1 ? 'y' : 'ies') + ' for <strong>' + sail + '</strong>';
+                if (totalUnknown > 0) subLine += ' <span style="color:#e65100;">(' + totalUnknown + ' without timestamp — older session format)</span>';
+                let html = '<p style="color:#666; margin-bottom:12px;">' + subLine + '</p>';
+                html += '<table class="measure-table"><thead><tr><th>Date / Time</th><th>Speed (kn)</th></tr></thead><tbody>';
+                data.samples.forEach(function(s) {
+                    let dateStr, speedStr, rowStyle = '';
+                    if (s.timestamp !== null) {
+                        const dt = new Date(s.timestamp);
+                        dateStr = dt.toLocaleDateString('en-GB') + ' ' + dt.toLocaleTimeString('en-GB');
+                        speedStr = s.speed.toFixed(2);
+                    } else {
+                        const label = s.method === 'p90' ? '90th percentile' : 'average';
+                        dateStr = '<em style="color:#999;">unknown</em>';
+                        speedStr = s.speed.toFixed(2) + ' <span style="font-size:0.8em;color:#999;font-weight:normal;">'
+                                 + '(' + label + ' of ' + (s.count || '?') + ' samples — '
+                                 + 'individual values not stored in this session format)</span>';
+                        rowStyle = ' style="background:#fffde7;"';
+                    }
+                    html += '<tr' + rowStyle + '><td>' + dateStr + '</td><td>' + speedStr + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('modalContent').innerHTML = html;
+                document.getElementById('modalFooter').style.display = 'flex';
+            } catch (e) {
+                document.getElementById('modalContent').innerHTML = '<p style="color:#c62828;">Error loading measurements.</p>';
+            }
+        }
+
+        function closeMeasureModal() {
+            document.getElementById('measureModal').style.display = 'none';
+        }
+
+        async function clearCurrentCell() {
+            if (!currentModalCell) return;
+            const { twa, tws, sail } = currentModalCell;
+            if (!confirm('Delete all stored values for TWA ' + twa + '° / TWS ' + tws + ' kn (' + sail + ')?')) return;
+            try {
+                const resp = await fetch('/api/cell/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sail, twa: parseInt(twa), tws: parseInt(tws) })
+                });
+                const result = await resp.json();
+                if (result.status === 'ok') {
+                    closeMeasureModal();
+                    lastPolarFetchSail = '';
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (e) {
+                alert('Connection error while clearing cell.');
+            }
+        }
+
+        function openResetModal() {
+            document.getElementById('resetSailName').textContent = document.getElementById('sailsInput').selectedOptions[0].text;
+            document.getElementById('resetConfirmBtn').disabled = true;
+            document.getElementById('resetBackupBtn').textContent = '⬇ Step 1: Download backup';
+            document.getElementById('resetBackupBtn').style.opacity = '1';
+            document.getElementById('resetStatusMsg').textContent = 'Download the backup to continue.';
+            document.getElementById('resetStatusMsg').style.color = '#666';
+            document.getElementById('resetModal').style.display = 'block';
+        }
+
+        function closeResetModal() {
+            document.getElementById('resetModal').style.display = 'none';
+        }
+
+        function downloadBackupForReset() {
+            const a = document.createElement('a');
+            a.href = '/api/export';
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            document.getElementById('resetConfirmBtn').disabled = false;
+            document.getElementById('resetBackupBtn').textContent = '✓ Backup downloaded';
+            document.getElementById('resetBackupBtn').style.opacity = '0.65';
+            document.getElementById('resetStatusMsg').textContent = 'Backup downloaded. You can now delete the values.';
+            document.getElementById('resetStatusMsg').style.color = '#2E7D32';
+        }
+
+        async function executeReset() {
+            const sail = currentSail;
+            if (!confirm('All measured values for "' + sail + '" will be permanently deleted. Continue?')) return;
+            try {
+                const resp = await fetch('/api/polar/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sail })
+                });
+                const result = await resp.json();
+                if (result.status === 'ok') {
+                    closeResetModal();
+                    lastPolarFetchSail = '';
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (e) {
+                alert('Connection error while resetting.');
+            }
+        }
+
+        let motorDetectionEnabled = true;
+
+        async function toggleMotorDetection() {
+            motorDetectionEnabled = !motorDetectionEnabled;
+            try {
+                await fetch('/api/motor-detection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: motorDetectionEnabled })
+                });
+                updateMotorUI(motorDetectionEnabled, document.getElementById('motorWarning').style.display !== 'none');
+            } catch (e) {
+                motorDetectionEnabled = !motorDetectionEnabled; // revert on error
+                console.error('Motor toggle error:', e);
+            }
+        }
+
+        function updateMotorUI(enabled, motoring) {
+            const btn = document.getElementById('motorToggleBtn');
+            const warning = document.getElementById('motorWarning');
+            const overrideWarning = document.getElementById('motorOverrideWarning');
+            if (enabled) {
+                btn.textContent = '🔍 Detection: ON';
+                btn.style.background = '#4CAF50';
+                overrideWarning.style.display = 'none';
+                warning.style.display = motoring ? 'block' : 'none';
+            } else {
+                btn.textContent = '🚫 Detection: OFF';
+                btn.style.background = '#9E9E9E';
+                warning.style.display = 'none';
+                overrideWarning.style.display = 'block';
+            }
+        }
+
+        function exportPredictwind() {
+            const a = document.createElement('a');
+            a.href = '/api/polar-export?sail=' + encodeURIComponent(currentSail);
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Close modals when clicking backdrop
+        document.getElementById('measureModal').addEventListener('click', function(e) {
+            if (e.target === this) closeMeasureModal();
+        });
+        document.getElementById('resetModal').addEventListener('click', function(e) {
+            if (e.target === this) closeResetModal();
+        });
+
+        setInterval(updateData, 1000);
+        updateData();
+    </script>
+</body>
+</html>
